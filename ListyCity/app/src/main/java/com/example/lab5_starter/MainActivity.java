@@ -1,6 +1,7 @@
 package com.example.lab5_starter;
 
 import android.os.Bundle;
+import android.util.Log;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.ListView;
@@ -11,19 +12,48 @@ import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 
+import com.google.firebase.firestore.CollectionReference;
+import com.google.firebase.firestore.DocumentReference;
+import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.QueryDocumentSnapshot;
+
 import java.util.ArrayList;
 
 public class MainActivity extends AppCompatActivity implements CityDialogFragment.CityDialogListener {
 
     private Button addCityButton;
     private ListView cityListView;
-
+    private Button deleteButton;
     private ArrayList<City> cityArrayList;
     private ArrayAdapter<City> cityArrayAdapter;
+    private FirebaseFirestore db;
+    private CollectionReference citiesRef;
+
+    int clickPosition = -1;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        db = FirebaseFirestore.getInstance();
+        citiesRef = db.collection("cities");
+        cityArrayList = new ArrayList<>();
+        cityArrayAdapter = new CityArrayAdapter(this, cityArrayList);
+        citiesRef.addSnapshotListener((value, error) -> {
+            if (error != null){
+                Log.e("Firestore", error.toString());
+            }
+            if (value != null && !value.isEmpty()){
+                cityArrayList.clear();
+                for (QueryDocumentSnapshot snapshot: value){
+                    String name = snapshot.getString("name");
+                    String province = snapshot.getString("province");
+
+                    cityArrayList.add(new City(name,province));
+                }
+                cityArrayAdapter.notifyDataSetChanged();
+            }
+        });
+
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_main);
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
@@ -33,15 +63,33 @@ public class MainActivity extends AppCompatActivity implements CityDialogFragmen
         });
 
         // Set views
+
         addCityButton = findViewById(R.id.buttonAddCity);
         cityListView = findViewById(R.id.listviewCities);
-
+        deleteButton = findViewById(R.id.delete_button);
+        //addCityEditText = findViewById(R.id.add_city_field);
         // create city array
-        cityArrayList = new ArrayList<>();
-        cityArrayAdapter = new CityArrayAdapter(this, cityArrayList);
         cityListView.setAdapter(cityArrayAdapter);
 
-        addDummyData();
+
+        deleteButton.setOnClickListener(v -> {
+            //String newCity = addCityEditText.getText().toString();
+            if (clickPosition !=-1){
+                String cityName = cityArrayList.get(clickPosition).getName();
+                cityArrayList.remove(clickPosition);
+            cityArrayAdapter.notifyDataSetChanged();
+
+            citiesRef.document(cityName).delete();
+            }
+        });
+        cityListView.setOnItemLongClickListener((parent, view, position, id) -> {
+            clickPosition = position;
+
+            return true;
+        });
+
+
+        //addDummyData();
 
         // set listeners
         addCityButton.setOnClickListener(view -> {
@@ -50,6 +98,7 @@ public class MainActivity extends AppCompatActivity implements CityDialogFragmen
         });
 
         cityListView.setOnItemClickListener((adapterView, view, i, l) -> {
+           // clickPosition = i;
             City city = cityArrayAdapter.getItem(i);
             CityDialogFragment cityDialogFragment = CityDialogFragment.newInstance(city);
             cityDialogFragment.show(getSupportFragmentManager(),"City Details");
@@ -71,6 +120,8 @@ public class MainActivity extends AppCompatActivity implements CityDialogFragmen
         cityArrayList.add(city);
         cityArrayAdapter.notifyDataSetChanged();
 
+        DocumentReference docRef = citiesRef.document(city.getName());
+        docRef.set(city);
     }
 
     public void addDummyData(){
